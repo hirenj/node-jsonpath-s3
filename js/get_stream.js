@@ -46,8 +46,44 @@ function MetadataExtractor(options) {
 inherits(MetadataExtractor, Transform);
 
 MetadataExtractor.prototype._transform = function _transform(obj, encoding, callback) {
-  console.log(obj.toString());
   this.parser.write(obj);
+  callback();
+};
+
+function Offsetter(offset,options) {
+  if ( ! (this instanceof Offsetter))
+    return new Offsetter(offset,options);
+
+  if (! options) options = {};
+  options.objectMode = true;
+  this.startOffset = offset;
+  if ( ! this.startOffset ) {
+    this.startOffset = 0;
+    this.done = true;
+  }
+  Transform.call(this, options);
+}
+
+inherits(Offsetter, Transform);
+
+Offsetter.prototype._transform = function _transform(obj, encoding, callback) {
+  this.offset = this.startOffset + (this.bytesConsumed || 0) - 1024*1024;
+  this.bytesConsumed = (this.bytesConsumed || 0) + obj.length;
+  if (this.done) {
+    this.push(obj);
+    callback();
+    return;
+  }
+
+  let chunk = obj.toString();
+  let newline = chunk.indexOf('\n');
+
+  if (newline < 0) {
+    callback();
+    return;
+  }
+  this.done = true;
+  this.push('{ "data" : {'+chunk.substring(newline));
   callback();
 };
 
@@ -75,7 +111,6 @@ const retrieve_file_s3 = function retrieve_file_s3(s3path,byte_offset) {
   if (byte_offset) {
     params.Range = byte_offset > 0 ? `bytes=${byte_offset}-` : `bytes=${byte_offset}`;
   }
-  console.log(params);
   let request = s3.getObject(params);
   let stream = request.createReadStream();
   return stream;
@@ -95,7 +130,7 @@ const get_data_stream = function(s3path) {
 
 const get_metadata_stream = function(s3path,offset) {
   let stream = retrieve_file_s3(s3path,offset || -50*1024);
-  let output = stream.pipe(new MetadataExtractor());
+  let output = stream.pipe(new Offsetter(1)).pipe(new MetadataExtractor());
   output.finished = new Promise( (resolve,reject) => {
     stream.on('end', resolve );
     stream.on('finish', resolve );
