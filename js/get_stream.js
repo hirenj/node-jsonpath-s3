@@ -99,13 +99,23 @@ const parse_path = function parse_path(s3path) {
   };
 };
 
-const retrieve_file_local = function retrieve_file_local(filekey) {
-  return fs.createReadStream(filekey.replace('file://',''));
+const stat_value = function(filename) {
+  let stats = fs.statSync(filename);
+  return stats.size;
+};
+
+const retrieve_file_local = function retrieve_file_local(filekey,offset) {
+  let path = filekey.replace('file://','')
+  let size = stat_value(path);
+  if ( ! offset || (offset >= 0)) {
+    offset = -1*size;
+  }
+  return fs.createReadStream(path, { start: (size + offset) });
 };
 
 const retrieve_file_s3 = function retrieve_file_s3(s3path,byte_offset) {
   if (typeof s3path == 'string' && s3path.indexOf('file://') == 0) {
-    return retrieve_file_local(s3path);
+    return retrieve_file_local(s3path,byte_offset);
   }
   let params = parse_path(s3path);
   if (byte_offset) {
