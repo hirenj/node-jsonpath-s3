@@ -121,6 +121,7 @@ const retrieve_file_s3 = function retrieve_file_s3(s3path,byte_offset) {
   if (byte_offset) {
     params.Range = byte_offset > 0 ? `bytes=${byte_offset}-` : `bytes=${byte_offset}`;
   }
+  console.log("S3 request params are ",params);
   let request = s3.getObject(params);
   let stream = request.createReadStream();
   return stream;
@@ -139,7 +140,7 @@ const get_data_stream = function(s3path) {
 };
 
 const get_metadata_stream = function(s3path,offset) {
-  let stream = retrieve_file_s3(s3path,offset || -50*1024);
+  let stream = retrieve_file_s3(s3path,offset || -5*1024);
   let output = stream.pipe(new Offsetter(1)).pipe(new MetadataExtractor());
   output.finished = new Promise( (resolve,reject) => {
     stream.on('end', resolve );
