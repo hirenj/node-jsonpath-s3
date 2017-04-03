@@ -110,6 +110,9 @@ const retrieve_file_local = function retrieve_file_local(filekey,offset) {
   if ( ! offset || (offset >= 0)) {
     offset = -1*size;
   }
+  if ( Math.abs(offset) > size ) {
+    offset = -1*size;
+  }
   return fs.createReadStream(path, { start: (size + offset) });
 };
 
@@ -140,8 +143,8 @@ const get_data_stream = function(s3path) {
 };
 
 const get_metadata_stream = function(s3path,offset) {
-  let stream = retrieve_file_s3(s3path,offset || -5*1024);
-  let output = stream.pipe(new Offsetter(1)).pipe(new MetadataExtractor());
+  let stream = retrieve_file_s3(s3path,offset || -50*1024);
+  let output = stream.pipe(new Offsetter(stream.start === 0 ? 0 : 1)).pipe(new MetadataExtractor());
   output.finished = new Promise( (resolve,reject) => {
     stream.on('end', resolve );
     stream.on('finish', resolve );
