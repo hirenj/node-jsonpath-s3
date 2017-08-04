@@ -113,7 +113,7 @@ const retrieve_file_local = function retrieve_file_local(filekey,offset) {
   if ( Math.abs(offset) > size ) {
     offset = -1*size;
   }
-  return fs.createReadStream(path, { start: (size + offset) });
+  return Promise.resolve(fs.createReadStream(path, { start: (size + offset) }));
 };
 
 const retrieve_file_s3 = function retrieve_file_s3(s3path,byte_offset) {
@@ -121,13 +121,19 @@ const retrieve_file_s3 = function retrieve_file_s3(s3path,byte_offset) {
     return retrieve_file_local(s3path,byte_offset);
   }
   let params = parse_path(s3path);
-  if (byte_offset) {
-    params.Range = byte_offset > 0 ? `bytes=${byte_offset}-` : `bytes=${byte_offset}`;
-  }
-  console.log("S3 request params are ",params);
-  let request = s3.getObject(params);
-  let stream = request.createReadStream();
-  return stream;
+  return s3.headObject(params).promise().then( head => {
+    console.log(head);
+    if (head.ContentLength < Math.abs(byte_offset)) {
+      byte_offset = byte_offset < 1 ? 0 : head.ContentLength;
+    }
+  }).then( () => {
+    if (byte_offset) {
+      params.Range = byte_offset > 0 ? `bytes=${byte_offset}-` : `bytes=${byte_offset}`;
+    }
+    let request = s3.getObject(params);
+    let stream = request.createReadStream();
+    return stream;
+  });
 };
 
 const get_data_stream = function(s3path) {
@@ -143,14 +149,16 @@ const get_data_stream = function(s3path) {
 };
 
 const get_metadata_stream = function(s3path,offset) {
-  let stream = retrieve_file_s3(s3path,offset || -50*1024);
-  let output = stream.pipe(new Offsetter(stream.start === 0 ? 0 : 1)).pipe(new MetadataExtractor());
-  output.finished = new Promise( (resolve,reject) => {
-    stream.on('end', resolve );
-    stream.on('finish', resolve );
-    stream.on('error', reject );
+  let stream_promise = retrieve_file_s3(s3path,offset || -50*1024);
+  return stream_promise.then( stream => {
+    let output = stream.pipe(new Offsetter(stream.start === 0 ? 0 : 1)).pipe(new MetadataExtractor());
+    output.finished = new Promise( (resolve,reject) => {
+      stream.on('end', resolve );
+      stream.on('finish', resolve );
+      stream.on('error', reject );
+    });
+    return output;
   });
-  return output;
 };
 
 exports.get_data_stream = get_data_stream;
