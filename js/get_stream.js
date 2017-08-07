@@ -122,7 +122,6 @@ const retrieve_file_s3 = function retrieve_file_s3(s3path,byte_offset) {
   }
   let params = parse_path(s3path);
   return s3.headObject(params).promise().then( head => {
-    console.log(head);
     if (head.ContentLength < Math.abs(byte_offset)) {
       byte_offset = byte_offset < 1 ? 0 : head.ContentLength;
     }
@@ -132,31 +131,36 @@ const retrieve_file_s3 = function retrieve_file_s3(s3path,byte_offset) {
     }
     let request = s3.getObject(params);
     let stream = request.createReadStream();
+    if (! byte_offset) {
+      stream.start = 0;
+    }
     return stream;
   });
 };
 
-const get_data_stream = function(s3path) {
-  let stream = retrieve_file_s3(s3path);
-  let json_parser = JSONStream.parse(['data', {'emitKey': true}]);
-  let output = stream.pipe(json_parser);
-  output.finished = new Promise( (resolve,reject) => {
+const stream_end_promise = function(stream) {
+  return new Promise( (resolve,reject) => {
     stream.on('end', resolve );
     stream.on('finish', resolve );
     stream.on('error', reject );
   });
-  return output;
+};
+
+const get_data_stream = function(s3path) {
+  let stream_promise = retrieve_file_s3(s3path);
+  let json_parser = JSONStream.parse(['data', {'emitKey': true}]);
+  return stream_promise.then( stream => {
+    let output = stream.pipe(json_parser);
+    output.finished = stream_end_promise(stream);
+    return output;
+  });
 };
 
 const get_metadata_stream = function(s3path,offset) {
   let stream_promise = retrieve_file_s3(s3path,offset || -50*1024);
   return stream_promise.then( stream => {
     let output = stream.pipe(new Offsetter(stream.start === 0 ? 0 : 1)).pipe(new MetadataExtractor());
-    output.finished = new Promise( (resolve,reject) => {
-      stream.on('end', resolve );
-      stream.on('finish', resolve );
-      stream.on('error', reject );
-    });
+    output.finished = stream_end_promise(stream);
     return output;
   });
 };
