@@ -18,7 +18,7 @@ function MetadataExtractor(options) {
   if (! options) options = {};
   options.objectMode = true;
   let self = this;
-  let Parser = require('JSONStream/node_modules/jsonparse');
+  let Parser = require('jsonparse');
   let p = new Parser();
 
   this.parser = p;
